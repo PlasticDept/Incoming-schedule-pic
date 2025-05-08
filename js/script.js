@@ -89,21 +89,28 @@ function renderRow(row, index, id) {
 }
 
 function loadFirebaseData() {
-  db.ref("incoming_schedule").once("value").then(snapshot => {
+  db.ref("incoming_schedule").on("value", snapshot => {
+    const data = snapshot.val() || {};
     table.clear();
-    firebaseRecords = snapshot.val() || {};
-    Object.entries(firebaseRecords).forEach(([id, data], i) => {
-      const html = renderRow(data, i, id);
+
+    let index = 0;
+    for (const id in data) {
+      const row = data[id];
+      const html = renderRow(row, index++, id);
       if (html) table.row.add($(html));
-    });
+    }
+
     table.draw();
     table.on('order.dt search.dt', function () {
       table.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
         cell.innerHTML = i + 1;
       });
     }).draw();
+  }, error => {
+    console.error("❌ Gagal ambil data realtime dari Firebase:", error);
   });
 }
+
 
 function updateFirebaseField(recordId, timeInRaw, unloadingTimeRaw, finishRaw) {
   const timeIn = (timeInRaw || "-").trim();
