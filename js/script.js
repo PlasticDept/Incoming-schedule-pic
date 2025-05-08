@@ -80,7 +80,7 @@ function renderRow(row, index, id) {
       <td>${p40}</td>
       <td>${row["INVOICE NO"] || ""}</td>
       <td>${row["PACKAGE"] || ""}</td>
-      <td>${row["INCOMING PLAN"] || ""}</td>
+      <td>${formatDate(row["INCOMING PLAN"])}</td>
       <td class="status-progress"><span class="label label-${status.toLowerCase()}">${status}</span></td>
       <td contenteditable class="editable time-in">${timeIn}</td>
       <td contenteditable class="editable unloading-time">${unloadingTime}</td>
