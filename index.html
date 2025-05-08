@@ -5,19 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Incoming Container Monitoring</title>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/dashin.css" />
 </head>
 <body>
+  <div class="clock-container">
+    <div class="digital-clock" id="digitalClock"></div>
+    <div class="date-display" id="dateDisplay"></div>
+  </div>
+
+  <h1 class="dashboard-title">📦Schedule Incoming Container Monitoring</h1>
+
+  <!-- Upload section disembunyikan -->
+  <div class="upload-section" style="display: none;">
+    <label class="upload-label" for="csvFile">Upload data schedule incoming</label>
+    <input type="file" id="csvFile" accept=".csv" />
+    <button id="uploadBtn">Upload</button>
+    <div id="uploadStatus"></div>
+  </div>
+
+  <!-- Tambahan container untuk membungkus tabel -->
   <div class="container">
-    <h1>Incoming Container Monitoring</h1>
-
-    <div class="upload-section">
-      <label class="upload-label" for="csvFile">Upload data schedule incoming</label>
-      <input type="file" id="csvFile" accept=".csv" />
-      <button id="uploadBtn">Upload</button>
-      <div id="uploadStatus"></div>
-    </div>
-
     <div class="table-wrapper">
       <table id="containerTable" class="display nowrap" style="width:100%">
         <thead>
@@ -51,6 +58,26 @@
   <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-  <script defer src="js/script.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <script defer src="js/dashin.js"></script>
+  <script>
+    function updateClock() {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const timeString = `${hours}:${minutes}:${seconds}`;
+      document.getElementById('digitalClock').textContent = timeString;
+
+      const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      const dateString = now.toLocaleDateString('en-US', options);
+      document.getElementById('dateDisplay').textContent = dateString;
+    }
+
+    setInterval(updateClock, 1000);
+    updateClock(); // initial call
+  </script>
 </body>
 </html>
