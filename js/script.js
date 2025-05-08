@@ -37,6 +37,22 @@ function getStatusProgress(timeIn, unloadingTime, finish) {
   return "";
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return dateStr;
+
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const year = parseInt(parts[2], 10);
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const shortYear = year.toString().slice(-2);
+  return `${day}-${monthNames[month]}-${shortYear}`;
+}
+
 function renderRow(row, index, id) {
   const feet = row["FEET"]?.trim().toUpperCase();
   const packageVal = row["PACKAGE"]?.trim().toUpperCase();
