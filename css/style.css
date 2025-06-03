@@ -116,11 +116,11 @@ table.dataTable tbody tr:hover {
 }
 
 .label-outstanding {
-  background-color: #f44336;
+  background-color: #ff9800;
 }
 
 .label-waiting {
-  background-color: #ff9800;
+  background-color: #f44336;
 }
 
 .label-processing {
