@@ -19,9 +19,19 @@ const uploadStatus = document.getElementById("uploadStatus");
 let selectedFile = null;
 let firebaseRecords = {}; // mirip airtableRecords sebelumnya
 
+// Batch upload
+const batchCsvInput = document.getElementById("batchCsvFiles");
+const batchUploadBtn = document.getElementById("batchUploadBtn");
+const batchUploadStatus = document.getElementById("batchUploadStatus");
+let selectedBatchFiles = [];
+
 function showStatus(message, type = "info") {
   uploadStatus.textContent = message;
   uploadStatus.className = `status ${type}`;
+}
+function showBatchStatus(message, type = "info") {
+  batchUploadStatus.textContent = message;
+  batchUploadStatus.className = `status ${type}`;
 }
 
 function getStatusProgress(timeIn, unloadingTime, finish) {
@@ -29,14 +39,13 @@ function getStatusProgress(timeIn, unloadingTime, finish) {
   unloadingTime = (unloadingTime || "").trim();
   finish = (finish || "").trim();
   if ([timeIn, unloadingTime, finish].some(val => val === "0")) return "Reschedule";
-  if ([timeIn, unloadingTime, finish].every(val => val === "")) return "Waiting";
+  if ([timeIn, unloadingTime, finish].every(val => val === "")) return "Outstanding";
   if ([timeIn, unloadingTime, finish].every(val => val === "-")) return "Reschedule";
-  if (timeIn && (!unloadingTime || unloadingTime === "-")) return "Outstanding";
+  if (timeIn && (!unloadingTime || unloadingTime === "-")) return "Waiting";
   if (timeIn && unloadingTime && (!finish || finish === "-")) return "Processing";
   if (timeIn && unloadingTime && finish) return "Finish";
   return "";
 }
-
 function formatDate(dateStr) {
   if (!dateStr) return "";
   const parts = dateStr.split("/");
@@ -89,28 +98,21 @@ function renderRow(row, index, id) {
 }
 
 function loadFirebaseData() {
-  db.ref("incoming_schedule").on("value", snapshot => {
-    const data = snapshot.val() || {};
+  db.ref("incoming_schedule").once("value").then(snapshot => {
     table.clear();
-
-    let index = 0;
-    for (const id in data) {
-      const row = data[id];
-      const html = renderRow(row, index++, id);
+    firebaseRecords = snapshot.val() || {};
+    Object.entries(firebaseRecords).forEach(([id, data], i) => {
+      const html = renderRow(data, i, id);
       if (html) table.row.add($(html));
-    }
-
+    });
     table.draw();
     table.on('order.dt search.dt', function () {
       table.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
         cell.innerHTML = i + 1;
       });
     }).draw();
-  }, error => {
-    console.error("❌ Gagal ambil data realtime dari Firebase:", error);
   });
 }
-
 
 function updateFirebaseField(recordId, timeInRaw, unloadingTimeRaw, finishRaw) {
   const timeIn = (timeInRaw || "-").trim();
@@ -168,6 +170,99 @@ function parseAndUploadCSV(file) {
     }
   });
 }
+
+// ---------------------- BATCH UPLOAD LOGIC -----------------------
+
+batchCsvInput.addEventListener("change", function (e) {
+  selectedBatchFiles = Array.from(e.target.files);
+  if (selectedBatchFiles.length > 0) {
+    showBatchStatus(`📁 ${selectedBatchFiles.length} file siap diupload. Klik tombol Batch Upload.`, "info");
+  } else {
+    showBatchStatus("", "info");
+  }
+});
+
+batchUploadBtn.addEventListener("click", function () {
+  if (selectedBatchFiles.length === 0) {
+    showBatchStatus("⚠️ Silakan pilih file-file CSV terlebih dahulu!", "error");
+    return;
+  }
+  batchUploadCSVs(selectedBatchFiles);
+});
+
+function batchUploadCSVs(files) {
+  showBatchStatus("⏳ Memproses semua file CSV...", "info");
+
+  let total = files.length;
+  let done = 0;
+  let failed = 0;
+
+  function updateProgress() {
+    showBatchStatus(`Batch progress: ${done}/${total} selesai, ${failed} gagal`, "info");
+  }
+
+  const now = new Date();
+  const year = now.getFullYear().toString();
+
+  files.forEach(file => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async function (results) {
+        const rows = results.data;
+        try {
+          // Untuk setiap baris, simpan ke incomingSchedule/year/bulan/tanggal/containerNo
+          let promises = [];
+          rows.forEach(row => {
+            // Pastikan ada kolom INCOMING PLAN dan NO CONTAINER
+            const plan = (row["INCOMING PLAN"] || "").trim();
+            const noCont = (row["NO CONTAINER"] || "").trim();
+
+            if (!plan || !noCont) return;
+
+            // plan: format dd/mm/yyyy
+            const [dd, mm, yyyy] = plan.split("/");
+            if (!dd || !mm || !yyyy) return;
+
+            // Struktur bulan: angka tanpa leading zero, contoh: "7"
+            const monthNum = parseInt(mm, 10).toString();
+            const dateNum = parseInt(dd, 10).toString();
+
+            const path = `incomingSchedule/${yyyy}/${monthNum}/${dateNum}/${noCont}`;
+            promises.push(
+              db.ref(path).set(row)
+            );
+          });
+          await Promise.all(promises);
+          done++;
+          updateProgress();
+          if (done + failed === total) {
+            if (failed === 0) showBatchStatus("✅ Semua file berhasil diupload!", "success");
+            else showBatchStatus(`⚠️ Ada ${failed} file gagal diupload.`, "error");
+            batchCsvInput.value = "";
+            setTimeout(() => showBatchStatus("", ""), 4000);
+          }
+        } catch (err) {
+          failed++;
+          updateProgress();
+          if (done + failed === total) {
+            showBatchStatus(`⚠️ Ada ${failed} file gagal diupload.`, "error");
+            setTimeout(() => showBatchStatus("", ""), 4000);
+          }
+        }
+      },
+      error: function () {
+        failed++;
+        updateProgress();
+        if (done + failed === total) {
+          showBatchStatus(`⚠️ Ada ${failed} file gagal diupload.`, "error");
+          setTimeout(() => showBatchStatus("", ""), 4000);
+        }
+      }
+    });
+  });
+}
+// ---------------------- END BATCH UPLOAD -----------------------
 
 csvInput.addEventListener("change", function (e) {
   selectedFile = e.target.files[0];
