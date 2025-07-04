@@ -198,33 +198,10 @@ function batchUploadCSVs(files) {
   let failed = 0;
   let failedFiles = [];
 
-  // Map header ke key yang diinginkan
-  const headerMap = {
-    "Invoice Number": "Invoice Number",
-    "No. Of Pallet": "No. Of Pallet",
-    "Total Qty (Kg)": "Total Qty (Kg)",
-    "Time In": "Time In",
-    "Unloading Time": "Unloading Time",
-    "Finish": "Finish",
-    '1x20"': '1x20"',
-    '1x40"': '1x40"',
-    "Process Type": "Process Type"
-  };
-
-  // Fungsi untuk normalisasi key (hilangkan spasi, petik, dll)
+  // Helper untuk normalisasi key
   function normalizeKey(key) {
-    return key
-      .replace(/[\s_]+/g, "") // hapus spasi & underscore
-      .replace(/["']/g, "")   // hapus petik dua dan satu
-      .replace(/\./g, "")     // hapus titik
-      .toLowerCase();
+    return key.replace(/[\s_]+/g, "").replace(/["']/g, "").replace(/\./g, "").toLowerCase();
   }
-
-  // Buat map normalisasi agar flexible header di Excel/CSV tetap bisa diambil
-  const normalizedMap = {};
-  Object.keys(headerMap).forEach(k => {
-    normalizedMap[normalizeKey(k)] = k;
-  });
 
   function updateProgress() {
     showBatchStatus(`Batch progress: ${done}/${total} selesai, ${failed} gagal`, "info");
@@ -267,11 +244,14 @@ function batchUploadCSVs(files) {
     try {
       let promises = [];
       rows.forEach(row => {
-        // Ambil date dan nomor container
-        // Perhatikan: normalisasi key agar tidak gagal jika ada spasi/petik
-        const rawDate = row["Date"] || row["date"] || "";
-        const rawContainerNum = row["Container Number"] || row["Container number"] || row["container number"] || row["ContainerNumber"] || row["containernumber"] || "";
-
+        // Cari key Date & Container Number dengan normalisasi
+        let rawDate = "";
+        let rawContainerNum = "";
+        Object.keys(row).forEach(k => {
+          const norm = normalizeKey(k);
+          if (norm === "date") rawDate = row[k];
+          if (["containernumber", "containernomor"].includes(norm)) rawContainerNum = row[k];
+        });
         const dateStr = String(rawDate).trim();
         const containerNum = String(rawContainerNum).trim();
 
@@ -291,23 +271,9 @@ function batchUploadCSVs(files) {
 
         if (!day || !month || !year) return;
 
-        // Hanya ambil field yang diminta
-        const detail = {};
-        Object.keys(normalizedMap).forEach(normKey => {
-          // Cari key sebenarnya di row (case-insensitive, ignore spasi, petik, dll)
-          let foundKey = "";
-          for (let rowKey in row) {
-            if (normalizeKey(rowKey) === normKey) {
-              foundKey = rowKey;
-              break;
-            }
-          }
-          detail[headerMap[normalizedMap[normKey]]] = foundKey ? row[foundKey] : "";
-        });
-
-        // Path final
+        // Simpan seluruh row ke path yang diinginkan
         const path = `incomingSchedule/${year}/${month}/${day}/${containerNum}`;
-        promises.push(db.ref(path).set(detail));
+        promises.push(db.ref(path).set(row));
       });
       Promise.all(promises)
         .then(() => {
