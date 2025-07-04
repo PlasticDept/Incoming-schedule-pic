@@ -235,26 +235,26 @@ function batchUploadCSVs(files) {
     }
   });
 
+  // GANTI mapping di sini
   function processBatchRecords(rows, fileName) {
     try {
       let promises = [];
       rows.forEach(row => {
-        // Ambil data dari struktur baru
         const dateStr = (row["Date"] || "").trim();
         const containerNum = (row["Container Number"] || "").trim();
 
         if (!dateStr || !containerNum) return;
 
-        // Format Date: "2-Jan-25"
-        const [d, m, y] = dateStr.split("-");
-        if (!d || !m || !y) return;
+        const match = dateStr.match(/^(\d{1,2})-([A-Za-z]+)-(\d{2,4})$/);
+        if (!match) return;
+        const [_, d, m, y] = match;
         const monthMap = {
           Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
           Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12
         };
         const day = parseInt(d, 10);
         const month = monthMap[m];
-        const year = y.length === 2 ? "20" + y : y; // misal 25 -> 2025
+        const year = y.length === 2 ? "20" + y : y;
 
         if (!day || !month || !year) return;
 
