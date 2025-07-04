@@ -314,7 +314,7 @@ function batchUploadCSVs(files) {
         const monthName = monthNames[month];
         const paddedMonth = String(month).padStart(2, '0');
         const monthKey = `${paddedMonth}-${monthName}`;
-        const path = `incomingSchedule/${year}/${monthName}/${day}/${containerNum}`;
+        const path = `incomingSchedule/${year}/${monthKey}/${day}/${containerNum}`;
 
         // Membersihkan key dari karakter terlarang sebelum upload
         const safeRow = cleanKeys(row);
