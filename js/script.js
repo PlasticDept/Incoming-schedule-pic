@@ -235,16 +235,17 @@ function batchUploadCSVs(files) {
     }
   });
 
-  // GANTI mapping di sini
   function processBatchRecords(rows, fileName) {
     try {
       let promises = [];
       rows.forEach(row => {
+        // Sesuaikan dengan header baru
         const dateStr = (row["Date"] || "").trim();
         const containerNum = (row["Container Number"] || "").trim();
 
         if (!dateStr || !containerNum) return;
 
+        // Format Date: "2-Jan-25"
         const match = dateStr.match(/^(\d{1,2})-([A-Za-z]+)-(\d{2,4})$/);
         if (!match) return;
         const [_, d, m, y] = match;
@@ -258,6 +259,7 @@ function batchUploadCSVs(files) {
 
         if (!day || !month || !year) return;
 
+        // Upload seluruh detail sesuai struktur file baru
         const path = `incomingSchedule/${year}/${month}/${day}/${containerNum}`;
         promises.push(db.ref(path).set(row));
       });
