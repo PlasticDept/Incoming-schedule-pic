@@ -196,6 +196,7 @@ function batchUploadCSVs(files) {
   let total = files.length;
   let done = 0;
   let failed = 0;
+  let failedFiles = [];
 
   function updateProgress() {
     showBatchStatus(`Batch progress: ${done}/${total} selesai, ${failed} gagal`, "info");
@@ -211,20 +212,16 @@ function batchUploadCSVs(files) {
       complete: async function (results) {
         const rows = results.data;
         try {
-          // Untuk setiap baris, simpan ke incomingSchedule/year/bulan/tanggal/containerNo
           let promises = [];
           rows.forEach(row => {
-            // Pastikan ada kolom INCOMING PLAN dan NO CONTAINER
             const plan = (row["INCOMING PLAN"] || "").trim();
             const noCont = (row["NO CONTAINER"] || "").trim();
 
             if (!plan || !noCont) return;
 
-            // plan: format dd/mm/yyyy
             const [dd, mm, yyyy] = plan.split("/");
             if (!dd || !mm || !yyyy) return;
 
-            // Struktur bulan: angka tanpa leading zero, contoh: "7"
             const monthNum = parseInt(mm, 10).toString();
             const dateNum = parseInt(dd, 10).toString();
 
@@ -237,25 +234,30 @@ function batchUploadCSVs(files) {
           done++;
           updateProgress();
           if (done + failed === total) {
-            if (failed === 0) showBatchStatus("✅ Semua file berhasil diupload!", "success");
-            else showBatchStatus(`⚠️ Ada ${failed} file gagal diupload.`, "error");
+            if (failed === 0) {
+              showBatchStatus("✅ Semua file berhasil diupload!", "success");
+            } else {
+              showBatchStatus(`⚠️ Ada ${failed} file gagal diupload: ${failedFiles.join(", ")}`, "error");
+            }
             batchCsvInput.value = "";
             setTimeout(() => showBatchStatus("", ""), 4000);
           }
         } catch (err) {
           failed++;
+          failedFiles.push(file.name);
           updateProgress();
           if (done + failed === total) {
-            showBatchStatus(`⚠️ Ada ${failed} file gagal diupload.`, "error");
+            showBatchStatus(`⚠️ Ada ${failed} file gagal diupload: ${failedFiles.join(", ")}`, "error");
             setTimeout(() => showBatchStatus("", ""), 4000);
           }
         }
       },
       error: function () {
         failed++;
+        failedFiles.push(file.name);
         updateProgress();
         if (done + failed === total) {
-          showBatchStatus(`⚠️ Ada ${failed} file gagal diupload.`, "error");
+          showBatchStatus(`⚠️ Ada ${failed} file gagal diupload: ${failedFiles.join(", ")}`, "error");
           setTimeout(() => showBatchStatus("", ""), 4000);
         }
       }
