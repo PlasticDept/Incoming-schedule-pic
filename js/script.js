@@ -202,6 +202,16 @@ function batchUploadCSVs(files) {
     return String(key).replace(/[\s_]+/g, "").replace(/["']/g, "").replace(/\./g, "").toLowerCase();
   }
 
+  // Membersihkan key dari karakter terlarang Firebase (., #, $, /, [, ])
+  function cleanKeys(obj) {
+    const newObj = {};
+    Object.keys(obj).forEach(key => {
+      const cleanKey = key.replace(/[.#$/[\]]/g, '').replace(/\s\s+/g, ' ').trim();
+      newObj[cleanKey] = obj[key];
+    });
+    return newObj;
+  }
+
   function findKey(row, options) {
     const keys = Object.keys(row);
     for (let k of keys) {
@@ -216,6 +226,13 @@ function batchUploadCSVs(files) {
   function updateProgress() {
     showBatchStatus(`Batch progress: ${done}/${total} selesai, ${failed} gagal`, "info");
   }
+
+  const monthMap = {
+    Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+    Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12
+  };
+  const monthNames = [ "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" ];
 
   files.forEach(file => {
     const fileName = file.name.toLowerCase();
@@ -279,36 +296,30 @@ function batchUploadCSVs(files) {
           return;
         }
 
-        // Deteksi format tanggal (contoh: 2-Jan-25, 02-Jan-25, dst)
         const match = dateStr.match(/^(\d{1,2})-([A-Za-z]+)-(\d{2,4})$/);
         if (!match) {
           console.warn(`[${fileName}] Row ${idx + 1} - SKIPPED: date format not match`, dateStr);
           return;
         }
         const [_, d, m, y] = match;
-        const monthMap = {
-          Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
-          Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12
-        };
         const day = parseInt(d, 10);
         const month = monthMap[m];
         const year = y.length === 2 ? "20" + y : y;
-
-        console.log(`[${fileName}] Row ${idx + 1} - Parsed date: day=${day}, month=${month}, year=${year}`);
 
         if (!day || !month || !year) {
           console.warn(`[${fileName}] Row ${idx + 1} - SKIPPED: day/month/year not valid`, {day, month, year});
           return;
         }
 
-        // Path: incomingSchedule/{tahun}/{bulan}/{tanggal}/{containerNum}
-        const path = `incomingSchedule/${year}/${month}/${day}/${containerNum}`;
+        const monthName = monthNames[month];
+        const path = `incomingSchedule/${year}/${monthName}/${day}/${containerNum}`;
 
-        // Debug log path dan data yang akan diupload
-        console.log(`[${fileName}] Row ${idx + 1} - Writing to:`, path, row);
+        // Membersihkan key dari karakter terlarang sebelum upload
+        const safeRow = cleanKeys(row);
+        console.log(`[${fileName}] Row ${idx + 1} - Cleaned keys:`, safeRow);
+        console.log(`[${fileName}] Row ${idx + 1} - Writing to:`, path, safeRow);
 
-        // Simpan seluruh row (dengan header asli, biarkan spasi/petik)
-        const promise = db.ref(path).set(row)
+        const promise = db.ref(path).set(safeRow)
           .then(() => {
             console.log(`[${fileName}] Row ${idx + 1} - SUCCESS upload`);
           })
@@ -354,7 +365,6 @@ function batchUploadCSVs(files) {
     }
   }
 }
-// ---------------------- END BATCH UPLOAD -----------------------
 
 csvInput.addEventListener("change", function (e) {
   selectedFile = e.target.files[0];
