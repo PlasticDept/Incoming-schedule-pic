@@ -191,7 +191,7 @@ batchUploadBtn.addEventListener("click", function () {
 });
 
 function batchUploadCSVs(files) {
-  showBatchStatus("⏳ Memproses semua file CSV...", "info");
+  showBatchStatus("⏳ Memproses semua file...", "info");
 
   let total = files.length;
   let done = 0;
@@ -202,67 +202,97 @@ function batchUploadCSVs(files) {
     showBatchStatus(`Batch progress: ${done}/${total} selesai, ${failed} gagal`, "info");
   }
 
-  const now = new Date();
-  const year = now.getFullYear().toString();
-
   files.forEach(file => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async function (results) {
-        const rows = results.data;
+    const fileName = file.name.toLowerCase();
+    if (fileName.endsWith(".csv")) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: header => header.trim(),
+        complete: results => processBatchRecords(results.data, file.name),
+        error: () => processFailed(file.name)
+      });
+    } else if (
+      fileName.endsWith(".xlsx") ||
+      fileName.endsWith(".xls")
+    ) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
         try {
-          let promises = [];
-          rows.forEach(row => {
-            const plan = (row["INCOMING PLAN"] || "").trim();
-            const noCont = (row["NO CONTAINER"] || "").trim();
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+          processBatchRecords(rows, file.name);
+        } catch (err) {
+          processFailed(file.name);
+        }
+      };
+      reader.onerror = () => processFailed(file.name);
+      reader.readAsArrayBuffer(file);
+    } else {
+      processFailed(file.name);
+    }
+  });
 
-            if (!plan || !noCont) return;
+  function processBatchRecords(rows, fileName) {
+    try {
+      let promises = [];
+      rows.forEach(row => {
+        // Ambil data dari struktur baru
+        const dateStr = (row["Date"] || "").trim();
+        const containerNum = (row["Container Number"] || "").trim();
 
-            const [dd, mm, yyyy] = plan.split("/");
-            if (!dd || !mm || !yyyy) return;
+        if (!dateStr || !containerNum) return;
 
-            const monthNum = parseInt(mm, 10).toString();
-            const dateNum = parseInt(dd, 10).toString();
+        // Format Date: "2-Jan-25"
+        const [d, m, y] = dateStr.split("-");
+        if (!d || !m || !y) return;
+        const monthMap = {
+          Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+          Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12
+        };
+        const day = parseInt(d, 10);
+        const month = monthMap[m];
+        const year = y.length === 2 ? "20" + y : y; // misal 25 -> 2025
 
-            const path = `incomingSchedule/${yyyy}/${monthNum}/${dateNum}/${noCont}`;
-            promises.push(
-              db.ref(path).set(row)
-            );
-          });
-          await Promise.all(promises);
+        if (!day || !month || !year) return;
+
+        const path = `incomingSchedule/${year}/${month}/${day}/${containerNum}`;
+        promises.push(db.ref(path).set(row));
+      });
+      Promise.all(promises)
+        .then(() => {
           done++;
           updateProgress();
-          if (done + failed === total) {
-            if (failed === 0) {
-              showBatchStatus("✅ Semua file berhasil diupload!", "success");
-            } else {
-              showBatchStatus(`⚠️ Ada ${failed} file gagal diupload: ${failedFiles.join(", ")}`, "error");
-            }
-            batchCsvInput.value = "";
-            setTimeout(() => showBatchStatus("", ""), 4000);
-          }
-        } catch (err) {
-          failed++;
-          failedFiles.push(file.name);
-          updateProgress();
-          if (done + failed === total) {
-            showBatchStatus(`⚠️ Ada ${failed} file gagal diupload: ${failedFiles.join(", ")}`, "error");
-            setTimeout(() => showBatchStatus("", ""), 4000);
-          }
-        }
-      },
-      error: function () {
-        failed++;
-        failedFiles.push(file.name);
-        updateProgress();
-        if (done + failed === total) {
-          showBatchStatus(`⚠️ Ada ${failed} file gagal diupload: ${failedFiles.join(", ")}`, "error");
-          setTimeout(() => showBatchStatus("", ""), 4000);
-        }
+          checkComplete();
+        })
+        .catch(() => {
+          processFailed(fileName);
+        });
+    } catch (err) {
+      processFailed(fileName);
+    }
+  }
+
+  function processFailed(fileName) {
+    failed++;
+    failedFiles.push(fileName);
+    updateProgress();
+    checkComplete();
+  }
+
+  function checkComplete() {
+    if (done + failed === total) {
+      if (failed === 0) {
+        showBatchStatus("✅ Semua file berhasil diupload!", "success");
+      } else {
+        showBatchStatus(`⚠️ Ada ${failed} file gagal diupload: ${failedFiles.join(", ")}`, "error");
       }
-    });
-  });
+      batchCsvInput.value = "";
+      setTimeout(() => showBatchStatus("", ""), 4000);
+    }
+  }
 }
 // ---------------------- END BATCH UPLOAD -----------------------
 
