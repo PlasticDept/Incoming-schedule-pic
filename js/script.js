@@ -198,18 +198,15 @@ function batchUploadCSVs(files) {
   let failed = 0;
   let failedFiles = [];
 
-  // Helper untuk normalisasi key
   function normalizeKey(key) {
     return String(key).replace(/[\s_]+/g, "").replace(/["']/g, "").replace(/\./g, "").toLowerCase();
   }
 
-  // Mencari key yang mengandung kata kunci tertentu (untuk Date dan Container Number)
   function findKey(row, options) {
     const keys = Object.keys(row);
     for (let k of keys) {
       const nk = normalizeKey(k);
       for (let opt of options) {
-        // pakai contains agar typo kecil tetap tertangkap
         if (nk.includes(opt)) return k;
       }
     }
@@ -243,12 +240,17 @@ function batchUploadCSVs(files) {
           const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
           processBatchRecords(rows, file.name);
         } catch (err) {
+          console.error("❌ XLSX read error:", err);
           processFailed(file.name);
         }
       };
-      reader.onerror = () => processFailed(file.name);
+      reader.onerror = (e) => {
+        console.error("❌ FileReader error:", e);
+        processFailed(file.name);
+      };
       reader.readAsArrayBuffer(file);
     } else {
+      console.warn("❌ File type not supported:", file.name);
       processFailed(file.name);
     }
   });
@@ -256,10 +258,15 @@ function batchUploadCSVs(files) {
   function processBatchRecords(rows, fileName) {
     try {
       let promises = [];
-      rows.forEach(row => {
-        // Temukan key untuk kolom tanggal dan nomor container (lebih toleran)
+      rows.forEach((row, idx) => {
+        // Debug log row
+        console.log(`[${fileName}] Row ${idx + 1}:`, row);
+
+        // Temukan key untuk kolom tanggal dan nomor container
         const dateKey = findKey(row, ["date", "tanggal"]);
-        const containerKey = findKey(row, ["containernumber", "containernumber", "nomorcontainer", "nomorkontainer"]);
+        const containerKey = findKey(row, ["containernumber", "containernomor"]);
+
+        console.log(`[${fileName}] Row ${idx + 1} - Detected dateKey:`, dateKey, ", containerKey:", containerKey);
 
         const rawDate = dateKey ? row[dateKey] : "";
         const rawContainerNum = containerKey ? row[containerKey] : "";
@@ -267,11 +274,17 @@ function batchUploadCSVs(files) {
         const dateStr = String(rawDate).trim();
         const containerNum = String(rawContainerNum).trim();
 
-        if (!dateStr || !containerNum) return;
+        if (!dateStr || !containerNum) {
+          console.warn(`[${fileName}] Row ${idx + 1} - SKIPPED: date or containerNum missing`, {dateStr, containerNum});
+          return;
+        }
 
         // Deteksi format tanggal (contoh: 2-Jan-25, 02-Jan-25, dst)
         const match = dateStr.match(/^(\d{1,2})-([A-Za-z]+)-(\d{2,4})$/);
-        if (!match) return;
+        if (!match) {
+          console.warn(`[${fileName}] Row ${idx + 1} - SKIPPED: date format not match`, dateStr);
+          return;
+        }
         const [_, d, m, y] = match;
         const monthMap = {
           Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
@@ -281,24 +294,43 @@ function batchUploadCSVs(files) {
         const month = monthMap[m];
         const year = y.length === 2 ? "20" + y : y;
 
-        if (!day || !month || !year) return;
+        console.log(`[${fileName}] Row ${idx + 1} - Parsed date: day=${day}, month=${month}, year=${year}`);
+
+        if (!day || !month || !year) {
+          console.warn(`[${fileName}] Row ${idx + 1} - SKIPPED: day/month/year not valid`, {day, month, year});
+          return;
+        }
 
         // Path: incomingSchedule/{tahun}/{bulan}/{tanggal}/{containerNum}
         const path = `incomingSchedule/${year}/${month}/${day}/${containerNum}`;
 
+        // Debug log path dan data yang akan diupload
+        console.log(`[${fileName}] Row ${idx + 1} - Writing to:`, path, row);
+
         // Simpan seluruh row (dengan header asli, biarkan spasi/petik)
-        promises.push(db.ref(path).set(row));
+        const promise = db.ref(path).set(row)
+          .then(() => {
+            console.log(`[${fileName}] Row ${idx + 1} - SUCCESS upload`);
+          })
+          .catch((err) => {
+            console.error(`[${fileName}] Row ${idx + 1} - ERROR upload:`, err);
+          });
+
+        promises.push(promise);
       });
+
       Promise.all(promises)
         .then(() => {
           done++;
           updateProgress();
           checkComplete();
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error(`[${fileName}] Batch upload error:`, err);
           processFailed(fileName);
         });
     } catch (err) {
+      console.error(`[${fileName}] processBatchRecords fatal error:`, err);
       processFailed(fileName);
     }
   }
