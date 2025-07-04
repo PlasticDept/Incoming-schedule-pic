@@ -200,7 +200,20 @@ function batchUploadCSVs(files) {
 
   // Helper untuk normalisasi key
   function normalizeKey(key) {
-    return key.replace(/[\s_]+/g, "").replace(/["']/g, "").replace(/\./g, "").toLowerCase();
+    return String(key).replace(/[\s_]+/g, "").replace(/["']/g, "").replace(/\./g, "").toLowerCase();
+  }
+
+  // Mencari key yang mengandung kata kunci tertentu (untuk Date dan Container Number)
+  function findKey(row, options) {
+    const keys = Object.keys(row);
+    for (let k of keys) {
+      const nk = normalizeKey(k);
+      for (let opt of options) {
+        // pakai contains agar typo kecil tetap tertangkap
+        if (nk.includes(opt)) return k;
+      }
+    }
+    return null;
   }
 
   function updateProgress() {
@@ -244,20 +257,19 @@ function batchUploadCSVs(files) {
     try {
       let promises = [];
       rows.forEach(row => {
-        // Cari key Date & Container Number dengan normalisasi
-        let rawDate = "";
-        let rawContainerNum = "";
-        Object.keys(row).forEach(k => {
-          const norm = normalizeKey(k);
-          if (norm === "date") rawDate = row[k];
-          if (["containernumber", "containernomor"].includes(norm)) rawContainerNum = row[k];
-        });
+        // Temukan key untuk kolom tanggal dan nomor container (lebih toleran)
+        const dateKey = findKey(row, ["date", "tanggal"]);
+        const containerKey = findKey(row, ["containernumber", "containernumber", "nomorcontainer", "nomorkontainer"]);
+
+        const rawDate = dateKey ? row[dateKey] : "";
+        const rawContainerNum = containerKey ? row[containerKey] : "";
+
         const dateStr = String(rawDate).trim();
         const containerNum = String(rawContainerNum).trim();
 
         if (!dateStr || !containerNum) return;
 
-        // Format Date: "2-Jan-25" atau "02-Jan-25"
+        // Deteksi format tanggal (contoh: 2-Jan-25, 02-Jan-25, dst)
         const match = dateStr.match(/^(\d{1,2})-([A-Za-z]+)-(\d{2,4})$/);
         if (!match) return;
         const [_, d, m, y] = match;
@@ -271,8 +283,10 @@ function batchUploadCSVs(files) {
 
         if (!day || !month || !year) return;
 
-        // Simpan seluruh row ke path yang diinginkan
+        // Path: incomingSchedule/{tahun}/{bulan}/{tanggal}/{containerNum}
         const path = `incomingSchedule/${year}/${month}/${day}/${containerNum}`;
+
+        // Simpan seluruh row (dengan header asli, biarkan spasi/petik)
         promises.push(db.ref(path).set(row));
       });
       Promise.all(promises)
